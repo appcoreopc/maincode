@@ -1,0 +1,107 @@
+/*
+    InsertBatchHistory - Adds a document to the PaymentHistory collection that indicates the current status of the payment and the history of any changes.
+
+    History
+    Who         When            What
+    Will Leon   2019-06-05      Created
+    
+*/
+function InsertBatchHistory(batch) {
+
+    var batchJson = JSON.parse(batch);
+    //TODO: validate incoming batch???
+
+    var batchId = batchJson.MetaData.BatchId;
+    var clientName = search_array(batchJson.MetaData.ExtendedProperties, "ClientName").Value;
+ 
+    var metaData = {
+        "RegistrationId" : batchJson.MetaData.RegistrationId,
+        "BatchId" : batchId,
+        "ClientName" : clientName,
+        "CurrentStatus" :batchJson.CanonicalBatch.BatchStatus,
+        "CurrentStatusDescription" : batchJson.CanonicalBatch.BatchStatusDescription,
+        "LastModifiedBy" : batchJson.CanonicalBatch.ModifiedBy,
+        "LastModifiedAt" : batchJson.CanonicalBatch.ModifiedAt,    
+    };
+
+    var newHistory = {
+        "Status" : metaData.CurrentStatus,
+        "StatusDescription" : metaData.CurrentStatusDescription,
+        "ModifiedBy" : metaData.LastModifiedBy,
+        "ModifiedAt" : metaData.LastModifiedAt
+    };
+
+    var collection = getContext().getCollection();
+
+    // Query documents and take 1st item.
+    var isAccepted = collection.queryDocuments(
+        collection.getSelfLink(),
+        'SELECT * FROM root batchHistory WHERE batchHistory.MetaData.BatchId = "' + batchId  + '"',
+    function (err, feed, options) {
+        if (err) throw err;
+
+        // Check the feed and if empty create a new document
+        if (!feed || !feed.length) {
+
+            var newDocument = {};
+            newDocument.MetaData = metaData;            
+            newDocument.History = [];
+            newDocument.History.push(newHistory);
+            collection.createDocument(
+                collection.getSelfLink(),
+                newDocument,
+                function (err, feed, options) {
+                    if (err) throw err;
+
+                var response = getContext().getResponse();
+                response.setBody('New document created');
+
+                })
+        }
+        // Otherwise update the existing document and add the new history
+        else {
+            var currentDocument = feed[0];                        
+
+            if(!currentDocument.hasOwnProperty('History')){
+                throw new Error('Corrupt data: there is no History object in document for PaymentHistory id ' + batchId);
+            }
+
+            var arrLength = currentDocument.History.length; 
+            if(arrLength > 0){
+                var index = 0;
+                while(index < arrLength)
+                {
+                    // If this status already exists, just ignore
+                    if(currentDocument.History[index].ModifiedAt == newHistory.ModifiedAt)
+                    {
+                        console.log("Record already exists - exit/n");
+                        return;
+                    }
+                        //throw new Error('Record already exists for this ModifiedAt:' + newHistory.ModifiedAt + ' in PaymentHistory id ' + batchId);
+                    index++;
+                }
+            }
+            
+            currentDocument.MetaData = metaData;
+            currentDocument.History.push(newHistory);
+
+            var queued = collection.replaceDocument(currentDocument._self, currentDocument);            
+            if(!queued)
+                throw new Error('Could not queue BatchHistory document replace');
+
+            var response = getContext().getResponse();
+            response.setBody({"Message":"InsertBatchHistory completed"});
+        }
+    });
+
+    if (!isAccepted) throw new Error('The query was not accepted by the server.');
+}
+
+function search_array(array,valuetofind) {
+    for (i = 0; i < array.length; i++) {
+        if (array[i]['key'] === valuetofind) {
+            return array[i];
+        }
+    }
+    return "unknown";
+}
