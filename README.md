@@ -4,12 +4,16 @@
 To add a subtree 
 
 git remote add extlibrary https://github.com/appcoreopc/librepository.git
-git subtree add —-prefix=vendor/ extlibrary master
+
+
+git subtree add --prefix=vendor/ extlibrary master
 
 To update remote 
-git subtree pull —prefix=vendor extlibrary master
+git subtree pull --prefix=vendor extlibrary master
 
 
+To push changes to remote 
+git subtree push --prefix=vendor extlibrary master
 
 
 git subtree pull 
